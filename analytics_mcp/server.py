@@ -14,12 +14,8 @@
 # limitations under the License.
 """Entry point for the Google Analytics MCP server."""
 import asyncio
+import os
 import analytics_mcp.coordinator as coordinator
-from mcp.server.lowlevel import NotificationOptions
-from mcp.server.models import InitializationOptions
-import mcp.server.stdio
-import mcp.server
-import traceback
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.routing import Mount
@@ -27,18 +23,24 @@ import uvicorn
 
 def run_server():
     """Runs the MCP server over streamable HTTP."""
-    import os
     session_manager = StreamableHTTPSessionManager(
         app=coordinator.app,
         event_store=None,
         json_response=False,
     )
+
     async def handle_streamable_http(scope, receive, send):
         await session_manager.handle_request(scope, receive, send)
 
+    async def lifespan(app):
+        async with session_manager.run():
+            yield
+
     starlette_app = Starlette(
+        lifespan=lifespan,
         routes=[Mount("/mcp", app=handle_streamable_http)],
     )
+
     host = os.environ.get("FASTMCP_HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
     uvicorn.run(starlette_app, host=host, port=port)
