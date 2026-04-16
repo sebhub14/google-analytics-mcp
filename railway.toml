@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pip install -e ."
+
+[deploy]
+startCommand = "python -c \"import os,json; creds={'type':'authorized_user','client_id':os.environ['GA_CLIENT_ID'],'client_secret':os.environ['GA_CLIENT_SECRET'],'refresh_token':os.environ['GA_REFRESH_TOKEN']}; open('/tmp/credentials.json','w').write(json.dumps(creds))\" && GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json analytics-mcp"
+restartPolicyType = "on_failure"
