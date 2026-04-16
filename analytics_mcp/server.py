@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 # Copyright 2025 Google LLC All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Entry point for the Google Analytics MCP server."""
-
 import asyncio
 import analytics_mcp.coordinator as coordinator
 from mcp.server.lowlevel import NotificationOptions
@@ -23,41 +20,28 @@ from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.server
 import traceback
-
-
-async def run_server_async():
-    """Runs the MCP server over standard I/O."""
-    print("Starting MCP Stdio Server:", coordinator.app.name)
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await coordinator.app.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name=coordinator.app.name,  # Use the server name defined above
-                server_version="1.0.0",
-                capabilities=coordinator.app.get_capabilities(
-                    # Define server capabilities - consult MCP docs for options
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
-
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from starlette.applications import Starlette
+from starlette.routing import Mount
+import uvicorn
 
 def run_server():
-    """Synchronous wrapper to run the async MCP server."""
-    asyncio.run(run_server_async())
+    """Runs the MCP server over streamable HTTP."""
+    import os
+    session_manager = StreamableHTTPSessionManager(
+        app=coordinator.app,
+        event_store=None,
+        json_response=False,
+    )
+    async def handle_streamable_http(scope, receive, send):
+        await session_manager.handle_request(scope, receive, send)
 
+    starlette_app = Starlette(
+        routes=[Mount("/mcp", app=handle_streamable_http)],
+    )
+    host = os.environ.get("FASTMCP_HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(starlette_app, host=host, port=port)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_server())
-    except KeyboardInterrupt:
-        print("\nMCP Server (stdio) stopped by user.")
-    except Exception:
-        import traceback
-
-        print("MCP Server (stdio) encountered an error:")
-        traceback.print_exc()
-    finally:
-        print("MCP Server (stdio) process exiting.")
+    run_server()
